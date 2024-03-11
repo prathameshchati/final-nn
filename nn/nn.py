@@ -106,6 +106,9 @@ class NeuralNetwork:
             Z_curr: ArrayLike
                 Current layer linear transformed matrix.
         """
+        # each row in the W_curr matrix represents the neuron in the next layer, the number columns indicate the weights of each neuron in the previous activation layer (A_prev); the biases (b_curr) are added
+        A_curr=np.dot()
+
         pass
 
     def forward(self, X: ArrayLike) -> Tuple[ArrayLike, Dict[str, ArrayLike]]:
