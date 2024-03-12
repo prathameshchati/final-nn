@@ -107,9 +107,16 @@ class NeuralNetwork:
                 Current layer linear transformed matrix.
         """
         # each row in the W_curr matrix represents the neuron in the next layer, the number columns indicate the weights of each neuron in the previous activation layer (A_prev); the biases (b_curr) are added
-        A_curr=np.dot()
+        Z_curr=np.dot(W_curr, A_prev)+b_curr
 
-        pass
+        # pass through activation function
+        if (activation=='sigmoid'):
+            A_curr=self._sigmoid(Z_curr)
+        elif (activation=='relu'):
+            A_curr=self._relu(Z_curr)
+
+        return A_curr, Z_curr
+        # pass
 
     def forward(self, X: ArrayLike) -> Tuple[ArrayLike, Dict[str, ArrayLike]]:
         """
@@ -161,6 +168,29 @@ class NeuralNetwork:
             db_curr: ArrayLike
                 Partial derivative of loss function with respect to current layer bias matrix.
         """
+        # dA_curr is the dC/dA_last, which is multiplied in the backpropagation step with dA/dZ, the output of this multiplication is dZ_curr, which represents dC/dZ -> we compute this first
+        # dA_curr has dimensions output_dim x batch_size, as does Z_curr and dZ_curr
+        if (activation_curr=='sigmoid'):
+            dZ_curr=self._sigmoid_backprop(dA_curr, Z_curr)
+        elif (activation_curr=='relu'):
+            dZ_curr=self._relu_backprop(dA_curr, Z_curr)
+
+        # dA_prev, represents dC/dA_prev, can be thought of as expanding the chain rule using dZcurr (dC/dZ) and dZ/dA_prev; the derivative of Z_curr with respect to A_prev is simply W_curr
+        # this means, taking the dot product of dZ_curr and W_curr will give us dA_prev
+        dA_prev=np.dot(W_curr.T, dZ_curr)
+
+        # dZ/dW, the derivative of the linear combination with respect to weights, is simply A_prev, which has dimensions of previous layer, i.e. input_layer x batch_size
+        # W_curr, has dimensions output_dim x input_dim (A_prev length); so dW_curr must also be this dimension, and we can take the dot product of dZ_curr and A_prev.T
+        # Note, dW_curr represents dC/dW, which is the full chain multiplication of the subcomponents
+        dW_curr=np.dot(dZ_curr, A_prev.T)/dZ_curr.shape[1] # normalize by number of samples in batch (batch_size)
+
+        #
+        db_curr=None
+
+
+
+
+            
         pass
 
     def backprop(self, y: ArrayLike, y_hat: ArrayLike, cache: Dict[str, ArrayLike]):
@@ -248,7 +278,8 @@ class NeuralNetwork:
             nl_transform: ArrayLike
                 Activation function output.
         """
-        pass
+        return 1/(1+np.exp(-Z))
+        # pass
 
     def _sigmoid_backprop(self, dA: ArrayLike, Z: ArrayLike):
         """
@@ -264,7 +295,14 @@ class NeuralNetwork:
             dZ: ArrayLike
                 Partial derivative of current layer Z matrix.
         """
-        pass
+        # the derivative of the sigmoid function is f(Z)(1-f(Z)) where f is the sigmoid 
+        dZ=self._sigmoid(Z)*(1-self._sigmoid(Z))
+
+        # multiple dZ with dA to get our dC/dZ - derivative of the cost function with respect to Z
+        dZ=dA*dZ
+
+        return dZ
+        # pass
 
     def _relu(self, Z: ArrayLike) -> ArrayLike:
         """
@@ -278,7 +316,9 @@ class NeuralNetwork:
             nl_transform: ArrayLike
                 Activation function output.
         """
-        pass
+        # https://www.digitalocean.com/community/tutorials/relu-function-in-python
+        return np.array([max(0.0, z) for z in Z])
+        # pass
 
     def _relu_backprop(self, dA: ArrayLike, Z: ArrayLike) -> ArrayLike:
         """
@@ -294,7 +334,12 @@ class NeuralNetwork:
             dZ: ArrayLike
                 Partial derivative of current layer Z matrix.
         """
-        pass
+        # the derivative of relu returns 0 if the value is below or equal to 0 or 1 otherwise; convert relu to binary
+        dZ=self._relu(Z)
+        dZ=[0 if z<=0 else 1 for z in Z]
+        dZ=dA*dZ # multiply dA
+        return dZ
+        # pass
 
     def _binary_cross_entropy(self, y: ArrayLike, y_hat: ArrayLike) -> float:
         """
@@ -310,7 +355,10 @@ class NeuralNetwork:
             loss: float
                 Average loss over mini-batch.
         """
-        pass
+        # bianry cross entropy from hw7-regression
+        loss=(-1/len(y))*(np.transpose(y)@np.log(y_hat)+np.transpose(1-y)@np.log(1-y_hat))
+        return loss
+        # pass
 
     def _binary_cross_entropy_backprop(self, y: ArrayLike, y_hat: ArrayLike) -> ArrayLike:
         """
@@ -326,7 +374,11 @@ class NeuralNetwork:
             dA: ArrayLike
                 partial derivative of loss with respect to A matrix.
         """
-        pass
+        # https://towardsdatascience.com/nothing-but-numpy-understanding-creating-binary-classification-neural-networks-with-e746423c8d5c
+        # bce gradient should be different from the regression derivative, which is with respect to weight 
+        dA=-(y/y_hat)+((1-y)/(1-y_hat))
+        return dA
+        # pass
 
     def _mean_squared_error(self, y: ArrayLike, y_hat: ArrayLike) -> float:
         """
@@ -342,7 +394,10 @@ class NeuralNetwork:
             loss: float
                 Average loss of mini-batch.
         """
-        pass
+        # mse is just the mean of the differences between y and y_hat squared 
+        loss=np.mean((y-y_hat)**2)
+        return loss
+        # pass
 
     def _mean_squared_error_backprop(self, y: ArrayLike, y_hat: ArrayLike) -> ArrayLike:
         """
@@ -358,4 +413,7 @@ class NeuralNetwork:
             dA: ArrayLike
                 partial derivative of loss with respect to A matrix.
         """
-        pass
+        # the derivative is 2 times the difference between y and y_hat
+        dA=-(2/len(y))*(y-y_hat)
+        return dA
+        # pass
