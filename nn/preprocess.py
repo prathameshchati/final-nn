@@ -2,6 +2,7 @@
 import numpy as np
 from typing import List, Tuple
 from numpy.typing import ArrayLike
+import re
 
 def sample_seqs(seqs: List[str], labels: List[bool]) -> Tuple[List[str], List[bool]]:
     """
@@ -41,4 +42,17 @@ def one_hot_encode_seqs(seq_arr: List[str]) -> ArrayLike:
                 G -> [0, 0, 0, 1]
             Then, AGA -> [1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0].
     """
-    pass
+        # define encodings # https://stackoverflow.com/questions/6116978/how-to-replace-multiple-substrings-of-a-string
+    code={'A':'1000', 'T':'0100', 'C':'0010', 'G':'0001'}
+    code=dict((re.escape(k), v) for k, v in code.items()) 
+    pattern=re.compile("|".join(code.keys()))
+
+    # encode over loop and store in new list; goal is to replace each base pair with a binary string then convert the entire binary string to a list to create the encodings
+    encodings=[]
+    for seq in seq_arr:
+        alt_seq=pattern.sub(lambda bp: code[re.escape(bp.group(0))], seq)
+        alt_seq=list(alt_seq)
+        encodings.append(alt_seq)
+
+    return encodings
+    # pass

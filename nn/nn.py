@@ -132,7 +132,25 @@ class NeuralNetwork:
             cache: Dict[str, ArrayLike]:
                 Dictionary storing Z and A matrices from `_single_forward` for use in backprop.
         """
-        pass
+            # define cache as param_dict as we are going to update it
+        cache={}
+
+        # set A_curr as the input batches but transpose to have the batches along the columns and features along the rows; this matches it to the W matrix, which contains the weights for the current layer in each row
+        A_curr=X.T
+        cache['A0']=A_curr # add as initial layer
+
+        # go through each layer and call _single_forward
+        for idx, layer in enumerate(self.arch):
+            A_prev=A_curr
+            layer_idx=idx+1
+            A_curr, Z_curr=self._single_forward(self._param_dict['W' + str(layer_idx)], self._param_dict['b' + str(layer_idx)], A_prev, layer['activation'])
+
+            # add the A_curr and Z_curr to cache (on the last run, we get the final output layer)
+            cache['A' + str(layer_idx)]=A_curr # has dimensions output_dim x batch_size
+            cache['Z' + str(layer_idx)]=Z_curr # has dimensions output_dim x batch_size
+
+        return A_curr, cache
+        # pass
 
     def _single_backprop(
         self,
@@ -168,6 +186,8 @@ class NeuralNetwork:
             db_curr: ArrayLike
                 Partial derivative of loss function with respect to current layer bias matrix.
         """
+
+        # https://towardsdatascience.com/coding-neural-network-forward-propagation-and-backpropagtion-ccf8cf369f76
         # dA_curr is the dC/dA_last, which is multiplied in the backpropagation step with dA/dZ, the output of this multiplication is dZ_curr, which represents dC/dZ -> we compute this first
         # dA_curr has dimensions output_dim x batch_size, as does Z_curr and dZ_curr
         if (activation_curr=='sigmoid'):
@@ -184,14 +204,13 @@ class NeuralNetwork:
         # Note, dW_curr represents dC/dW, which is the full chain multiplication of the subcomponents
         dW_curr=np.dot(dZ_curr, A_prev.T)/dZ_curr.shape[1] # normalize by number of samples in batch (batch_size)
 
-        #
-        db_curr=None
+        # db_curr corresponds to dC/db, the derivative of cost wrt b, which is similar to dW curr but now we have to consider the term we multiply, which was A_prev for dW_curr. 
+        # taking the derivative of Z wrt b gives you 1, so we get dZ_curr again where the dimensions are output_dim x batch_size, however, we only have one set of b values per layer.
+        # thus, we average across the batch for dZ_curr
+        db_curr=np.mean(dZ_curr, axis=1)
 
-
-
-
-            
-        pass
+        return dA_prev, dW_curr, db_curr
+        # pass
 
     def backprop(self, y: ArrayLike, y_hat: ArrayLike, cache: Dict[str, ArrayLike]):
         """
@@ -210,7 +229,31 @@ class NeuralNetwork:
             grad_dict: Dict[str, ArrayLike]
                 Dictionary containing the gradient information from this pass of backprop.
         """
-        pass
+        # https://towardsdatascience.com/coding-neural-network-forward-propagation-and-backpropagtion-ccf8cf369f76
+        # first compute dA_curr given the loss_function, y, and y_hat
+        if (self._loss_func=="bce"): # binary cross entropy
+            dA_curr=self._binary_cross_entropy_backprop(y, y_hat)
+        elif (self._loss_func=="mce"): # mean squared error
+            dA_curr=self._mean_squared_error_backprop(y, y_hat)
+
+
+        # initialize gradient dictionary
+        gradient_dict={}
+        
+        # the cache and param_dict is indexed such that the input layer is A0 and the final layer is AN where N is the number of layers. So with a three layer system, we would have A0, A1, and A2; The weights and biases are labeled for A1 and A2.
+        # iterate and enumerate the list in reverse to get the components that are fed into  
+        # https://stackoverflow.com/questions/529424/traverse-a-list-in-reverse-order-in-python
+        for idx, layer in reversed(list(enumerate(self.arch))):
+            layer_idx=idx+1
+            dA_prev, dW_curr, db_curr=self._single_backprop(self._param_dict['W'+str(layer_idx)], self._param_dict['b'+str(layer_idx)], cache['Z'+str(layer_idx)], cache['A'+str(idx)], dA_curr, layer['activation'])
+            dA_curr=dA_prev # update dA_curr as the previous dA since we are going backward
+
+            # update gradient dicts with the same labels as the param_dict
+            gradient_dict['W'+str(layer_idx)]=dW_curr
+            gradient_dict['b'+str(layer_idx)]=db_curr
+
+        return gradient_dict
+        # pass
 
     def _update_params(self, grad_dict: Dict[str, ArrayLike]):
         """
@@ -221,7 +264,12 @@ class NeuralNetwork:
             grad_dict: Dict[str, ArrayLike]
                 Dictionary containing the gradient information from most recent round of backprop.
         """
-        pass
+        # iterate through layers and update the weights by subtracting the gradient for the given layer times the learning rate
+        for idx, layer in enumerate(self.arch):
+            layer_idx=idx+1
+            self._param_dict['W'+str(layer_idx)]-=self._lr*grad_dict['W'+str(layer_idx)]
+            self._param_dict['b'+str(layer_idx)]-=self._lr*grad_dict['b'+str(layer_idx)]
+        # pass
 
     def fit(
         self,
@@ -250,7 +298,47 @@ class NeuralNetwork:
             per_epoch_loss_val: List[float]
                 List of per epoch loss for validation set.
         """
-        pass
+        # intialize loss lists
+        per_epoch_loss_train=[]
+        per_epoch_loss_val=[]
+
+        # split training data into batches # https://www.geeksforgeeks.org/break-list-chunks-size-n-python/
+        X_train_batches=[X_train[i:i + self._batch_size] for i in range(0, len(X_train), self._batch_size)]  
+        y_train_batches=[y_train[i:i + self._batch_size] for i in range(0, len(y_train), self._batch_size)]  
+
+        # iterate and train wrt number of epoch
+        for e in range(self._epochs):
+            # all of the training is done with the batches iteratively and each time the loss is stored in the loss_train_list, which is averaged to give you the loss_train for the epoch
+            loss_train_list=[]
+            for X_train, y_train in zip(X_train_batches, y_train_batches):
+                # first train via forward alg. and get training loss
+                y_hat_train, cache_train=self.forward(X_train)
+                if (self._loss_func=="bce"): 
+                    loss_train=self._binary_cross_entropy_backprop(y_train, y_hat_train)
+                elif (self._loss_func=="mce"): 
+                    loss_train=self._mean_squared_error_backprop(y_train, y_hat_train)
+
+                loss_train_list.append(loss_train)
+
+                # update weights via backprop
+                grad_dict=self.backprop(y_train, y_hat_train, cache_train)
+                self._update_params(grad_dict)
+
+            # weighted average of the training losses where the weights are the length of each batch. If the batches are balanced in size, then the weighting does nothing and it is simply equal to the unweighted average
+            loss_train=(loss_train_list*[len(b) for b in X_train_batches])/len(X_train_batches)
+            per_epoch_loss_train.append(loss_train) # store training loss
+
+            # run validation on val data and store validation loss
+            # y_hat_val, cache_val=self.forward(X_val)
+            y_hat_val=self.predict(X_val)
+            if (self._loss_func=="bce"): 
+                loss_val=self._binary_cross_entropy_backprop(y_val, y_hat_val)
+            elif (self._loss_func=="mce"): 
+                loss_val=self._mean_squared_error_backprop(y_val, y_hat_val)
+            per_epoch_loss_val.append(loss_val) # store validation loss
+
+        return per_epoch_loss_train, per_epoch_loss_val
+        # pass
 
     def predict(self, X: ArrayLike) -> ArrayLike:
         """
@@ -264,7 +352,11 @@ class NeuralNetwork:
             y_hat: ArrayLike
                 Prediction from the model.
         """
-        pass
+
+        # call the forward alg
+        y_hat, cache=self.forward(X)
+        return y_hat
+        # pass
 
     def _sigmoid(self, Z: ArrayLike) -> ArrayLike:
         """
