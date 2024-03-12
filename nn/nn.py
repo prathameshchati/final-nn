@@ -28,9 +28,11 @@ class NeuralNetwork:
             (see nn_arch above)
     """
 
+    # for nn_arch, it was originally Union(int, str) - this kept raising an error
+    # https://stackoverflow.com/questions/38854282/do-union-types-actually-exist-in-python
     def __init__(
         self,
-        nn_arch: List[Dict[str, Union(int, str)]],
+        nn_arch: List[Dict[str, Union[int, str]]], 
         lr: float,
         seed: int,
         batch_size: int,
@@ -107,6 +109,7 @@ class NeuralNetwork:
                 Current layer linear transformed matrix.
         """
         # each row in the W_curr matrix represents the neuron in the next layer, the number columns indicate the weights of each neuron in the previous activation layer (A_prev); the biases (b_curr) are added
+        # the output Z_curr is of dimensions output_dim x batches
         Z_curr=np.dot(W_curr, A_prev)+b_curr
 
         # pass through activation function
@@ -149,7 +152,8 @@ class NeuralNetwork:
             cache['A' + str(layer_idx)]=A_curr # has dimensions output_dim x batch_size
             cache['Z' + str(layer_idx)]=Z_curr # has dimensions output_dim x batch_size
 
-        return A_curr, cache
+        # transpose A_curr to have batches along the rows and feature salong the columns - this was raising some errors
+        return A_curr.T, cache
         # pass
 
     def _single_backprop(
@@ -208,7 +212,6 @@ class NeuralNetwork:
         # taking the derivative of Z wrt b gives you 1, so we get dZ_curr again where the dimensions are output_dim x batch_size, however, we only have one set of b values per layer.
         # thus, we average across the batch for dZ_curr
         db_curr=np.mean(dZ_curr, axis=1)
-
         return dA_prev, dW_curr, db_curr
         # pass
 
@@ -233,12 +236,12 @@ class NeuralNetwork:
         # first compute dA_curr given the loss_function, y, and y_hat
         if (self._loss_func=="bce"): # binary cross entropy
             dA_curr=self._binary_cross_entropy_backprop(y, y_hat)
-        elif (self._loss_func=="mce"): # mean squared error
+        elif (self._loss_func=="mse"): # mean squared error
             dA_curr=self._mean_squared_error_backprop(y, y_hat)
 
 
         # initialize gradient dictionary
-        gradient_dict={}
+        grad_dict={}
         
         # the cache and param_dict is indexed such that the input layer is A0 and the final layer is AN where N is the number of layers. So with a three layer system, we would have A0, A1, and A2; The weights and biases are labeled for A1 and A2.
         # iterate and enumerate the list in reverse to get the components that are fed into  
@@ -249,10 +252,10 @@ class NeuralNetwork:
             dA_curr=dA_prev # update dA_curr as the previous dA since we are going backward
 
             # update gradient dicts with the same labels as the param_dict
-            gradient_dict['W'+str(layer_idx)]=dW_curr
-            gradient_dict['b'+str(layer_idx)]=db_curr
+            grad_dict['W'+str(layer_idx)]=dW_curr
+            grad_dict['b'+str(layer_idx)]=db_curr
 
-        return gradient_dict
+        return grad_dict
         # pass
 
     def _update_params(self, grad_dict: Dict[str, ArrayLike]):
@@ -268,7 +271,11 @@ class NeuralNetwork:
         for idx, layer in enumerate(self.arch):
             layer_idx=idx+1
             self._param_dict['W'+str(layer_idx)]-=self._lr*grad_dict['W'+str(layer_idx)]
-            self._param_dict['b'+str(layer_idx)]-=self._lr*grad_dict['b'+str(layer_idx)]
+
+            # reshape the b update to 2D
+            update_b=self._lr*grad_dict['b'+str(layer_idx)]
+            update_b=update_b.reshape(len(update_b), 1)
+            self._param_dict['b'+str(layer_idx)]-=update_b
         # pass
 
     def fit(
@@ -302,6 +309,11 @@ class NeuralNetwork:
         per_epoch_loss_train=[]
         per_epoch_loss_val=[]
 
+        print("X_train dim: ", X_train.shape)
+        print("y_train dim: ", y_train.shape)
+        print("X_val dim: ", X_val.shape)
+        print("y_val dim: ", y_val.shape)
+
         # split training data into batches # https://www.geeksforgeeks.org/break-list-chunks-size-n-python/
         X_train_batches=[X_train[i:i + self._batch_size] for i in range(0, len(X_train), self._batch_size)]  
         y_train_batches=[y_train[i:i + self._batch_size] for i in range(0, len(y_train), self._batch_size)]  
@@ -310,31 +322,32 @@ class NeuralNetwork:
         for e in range(self._epochs):
             # all of the training is done with the batches iteratively and each time the loss is stored in the loss_train_list, which is averaged to give you the loss_train for the epoch
             loss_train_list=[]
-            for X_train, y_train in zip(X_train_batches, y_train_batches):
+            for X_train_batch, y_train_batch in zip(X_train_batches, y_train_batches):
                 # first train via forward alg. and get training loss
-                y_hat_train, cache_train=self.forward(X_train)
+                y_hat_train, cache_train=self.forward(X_train_batch)
+            
                 if (self._loss_func=="bce"): 
-                    loss_train=self._binary_cross_entropy_backprop(y_train, y_hat_train)
-                elif (self._loss_func=="mce"): 
-                    loss_train=self._mean_squared_error_backprop(y_train, y_hat_train)
+                    loss_train=self._binary_cross_entropy(y_train_batch, y_hat_train)
+                elif (self._loss_func=="mse"): 
+                    loss_train=self._mean_squared_error(y_train_batch, y_hat_train)
 
                 loss_train_list.append(loss_train)
 
                 # update weights via backprop
-                grad_dict=self.backprop(y_train, y_hat_train, cache_train)
+                grad_dict=self.backprop(y_train_batch, y_hat_train, cache_train)
                 self._update_params(grad_dict)
 
             # weighted average of the training losses where the weights are the length of each batch. If the batches are balanced in size, then the weighting does nothing and it is simply equal to the unweighted average
-            loss_train=(loss_train_list*[len(b) for b in X_train_batches])/len(X_train_batches)
+            loss_train=(np.sum(np.array(loss_train_list)*np.array([len(b) for b in X_train_batches])))/X_train.shape[0]
             per_epoch_loss_train.append(loss_train) # store training loss
 
             # run validation on val data and store validation loss
-            # y_hat_val, cache_val=self.forward(X_val)
-            y_hat_val=self.predict(X_val)
+            y_hat_val, cache_val=self.forward(X_val)
+            # y_hat_val=self.predict(X_val)
             if (self._loss_func=="bce"): 
-                loss_val=self._binary_cross_entropy_backprop(y_val, y_hat_val)
-            elif (self._loss_func=="mce"): 
-                loss_val=self._mean_squared_error_backprop(y_val, y_hat_val)
+                loss_val=self._binary_cross_entropy(y_val, y_hat_val)
+            elif (self._loss_func=="mse"): 
+                loss_val=self._mean_squared_error(y_val, y_hat_val)
             per_epoch_loss_val.append(loss_val) # store validation loss
 
         return per_epoch_loss_train, per_epoch_loss_val
@@ -391,7 +404,7 @@ class NeuralNetwork:
         dZ=self._sigmoid(Z)*(1-self._sigmoid(Z))
 
         # multiple dZ with dA to get our dC/dZ - derivative of the cost function with respect to Z
-        dZ=dA*dZ
+        dZ=dA*dZ # changed to dA.T to fix broadcasting error
 
         return dZ
         # pass
@@ -409,7 +422,8 @@ class NeuralNetwork:
                 Activation function output.
         """
         # https://www.digitalocean.com/community/tutorials/relu-function-in-python
-        return np.array([max(0.0, z) for z in Z])
+        # https://stackoverflow.com/questions/32322281/numpy-matrix-binarization-using-only-one-expression
+        return np.maximum(0.0, Z) # streamlined from np.array([np.maximum(0,z) for z in Z.T])
         # pass
 
     def _relu_backprop(self, dA: ArrayLike, Z: ArrayLike) -> ArrayLike:
@@ -428,7 +442,7 @@ class NeuralNetwork:
         """
         # the derivative of relu returns 0 if the value is below or equal to 0 or 1 otherwise; convert relu to binary
         dZ=self._relu(Z)
-        dZ=[0 if z<=0 else 1 for z in Z]
+        dZ=np.where(Z>0, 1, 0) # [0 if z<=0 else 1 for z in Z] was causing errors
         dZ=dA*dZ # multiply dA
         return dZ
         # pass

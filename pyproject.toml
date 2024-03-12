@@ -13,7 +13,7 @@ license = {file = "LICENSE"}
 classifiers = ["License :: OSI Approved :: MIT License"]
 dynamic = ["version", "description"]
 dependencies = [
-    "pytest", "numpy", "scikit-learn", "matplotlib", "typing", "collections", "re"
+    "pytest", "numpy", "scikit-learn", "matplotlib", "typing", "collections", "re", "tensorflow"
 ]
 
 [project.urls]
