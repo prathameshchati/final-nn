@@ -135,12 +135,13 @@ class NeuralNetwork:
             cache: Dict[str, ArrayLike]:
                 Dictionary storing Z and A matrices from `_single_forward` for use in backprop.
         """
-            # define cache as param_dict as we are going to update it
+        # define cache as param_dict as we are going to update it
         cache={}
 
-        # set A_curr as the input batches but transpose to have the batches along the columns and features along the rows; this matches it to the W matrix, which contains the weights for the current layer in each row
-        A_curr=X.T
-        cache['A0']=A_curr # add as initial layer
+        # set A_curr as the input batches which has the batches along the rows and features along the columns; this matches it to the W matrix, which contains the weights for the current layer in each row
+        A_curr=X
+
+        # cache['A0']=A_curr # add as initial layer
 
         # go through each layer and call _single_forward
         for idx, layer in enumerate(self.arch):
@@ -149,11 +150,16 @@ class NeuralNetwork:
             A_curr, Z_curr=self._single_forward(self._param_dict['W' + str(layer_idx)], self._param_dict['b' + str(layer_idx)], A_prev, layer['activation'])
 
             # add the A_curr and Z_curr to cache (on the last run, we get the final output layer)
-            cache['A' + str(layer_idx)]=A_curr # has dimensions output_dim x batch_size
+            # cache['A' + str(layer_idx)]=A_curr # has dimensions output_dim x batch_size
+            cache['A' + str(idx)]=A_prev # has dimensions output_dim x batch_size
             cache['Z' + str(layer_idx)]=Z_curr # has dimensions output_dim x batch_size
 
+
+        # CHECK THIS
         # transpose A_curr to have batches along the rows and feature salong the columns - this was raising some errors
-        return A_curr.T, cache
+
+
+        return A_curr, cache # JUST CHANGED FROM A_curr.T
         # pass
 
     def _single_backprop(
@@ -212,6 +218,7 @@ class NeuralNetwork:
         # taking the derivative of Z wrt b gives you 1, so we get dZ_curr again where the dimensions are output_dim x batch_size, however, we only have one set of b values per layer.
         # thus, we average across the batch for dZ_curr
         db_curr=np.mean(dZ_curr, axis=1)
+
         return dA_prev, dW_curr, db_curr
         # pass
 
@@ -234,11 +241,11 @@ class NeuralNetwork:
         """
         # https://towardsdatascience.com/coding-neural-network-forward-propagation-and-backpropagtion-ccf8cf369f76
         # first compute dA_curr given the loss_function, y, and y_hat
+
         if (self._loss_func=="bce"): # binary cross entropy
             dA_curr=self._binary_cross_entropy_backprop(y, y_hat)
         elif (self._loss_func=="mse"): # mean squared error
             dA_curr=self._mean_squared_error_backprop(y, y_hat)
-
 
         # initialize gradient dictionary
         grad_dict={}
@@ -309,11 +316,6 @@ class NeuralNetwork:
         per_epoch_loss_train=[]
         per_epoch_loss_val=[]
 
-        print("X_train dim: ", X_train.shape)
-        print("y_train dim: ", y_train.shape)
-        print("X_val dim: ", X_val.shape)
-        print("y_val dim: ", y_val.shape)
-
         # split training data into batches # https://www.geeksforgeeks.org/break-list-chunks-size-n-python/
         X_train_batches=[X_train[i:i + self._batch_size] for i in range(0, len(X_train), self._batch_size)]  
         y_train_batches=[y_train[i:i + self._batch_size] for i in range(0, len(y_train), self._batch_size)]  
@@ -322,10 +324,14 @@ class NeuralNetwork:
         for e in range(self._epochs):
             # all of the training is done with the batches iteratively and each time the loss is stored in the loss_train_list, which is averaged to give you the loss_train for the epoch
             loss_train_list=[]
+
+            b=0 # ADDED FOR DEBUGGING
+
             for X_train_batch, y_train_batch in zip(X_train_batches, y_train_batches):
+
                 # first train via forward alg. and get training loss
                 y_hat_train, cache_train=self.forward(X_train_batch)
-            
+
                 if (self._loss_func=="bce"): 
                     loss_train=self._binary_cross_entropy(y_train_batch, y_hat_train)
                 elif (self._loss_func=="mse"): 
@@ -336,6 +342,8 @@ class NeuralNetwork:
                 # update weights via backprop
                 grad_dict=self.backprop(y_train_batch, y_hat_train, cache_train)
                 self._update_params(grad_dict)
+
+                b+=1 # ADDED FOR DEBUGGING
 
             # weighted average of the training losses where the weights are the length of each batch. If the batches are balanced in size, then the weighting does nothing and it is simply equal to the unweighted average
             loss_train=(np.sum(np.array(loss_train_list)*np.array([len(b) for b in X_train_batches])))/X_train.shape[0]
@@ -423,7 +431,9 @@ class NeuralNetwork:
         """
         # https://www.digitalocean.com/community/tutorials/relu-function-in-python
         # https://stackoverflow.com/questions/32322281/numpy-matrix-binarization-using-only-one-expression
-        return np.maximum(0.0, Z) # streamlined from np.array([np.maximum(0,z) for z in Z.T])
+
+        nl_transform=np.maximum(0.0, Z)
+        return nl_transform # streamlined from np.array([np.maximum(0,z) for z in Z.T])
         # pass
 
     def _relu_backprop(self, dA: ArrayLike, Z: ArrayLike) -> ArrayLike:
