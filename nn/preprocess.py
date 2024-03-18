@@ -35,7 +35,6 @@ def sample_seqs(seqs: List[str], labels: List[bool]) -> Tuple[List[str], List[bo
         else:
             all_neg_seqs.append(seq)
 
-
     # randomly sample negative classes in the same amount as there are positive classes
     neg_seqs_sample=random.sample(all_neg_seqs, len(all_pos_seqs)) 
 
@@ -74,6 +73,7 @@ def one_hot_encode_seqs(seq_arr: List[str]) -> ArrayLike:
     for seq in seq_arr:
         alt_seq=pattern.sub(lambda bp: code[re.escape(bp.group(0))], seq)
         alt_seq=list(alt_seq)
+        alt_seq=list(map(float, alt_seq))
         encodings.append(alt_seq)
 
     return encodings
