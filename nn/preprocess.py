@@ -3,6 +3,7 @@ import numpy as np
 from typing import List, Tuple
 from numpy.typing import ArrayLike
 import re
+import random
 
 def sample_seqs(seqs: List[str], labels: List[bool]) -> Tuple[List[str], List[bool]]:
     """
@@ -21,7 +22,28 @@ def sample_seqs(seqs: List[str], labels: List[bool]) -> Tuple[List[str], List[bo
         sampled_labels: List[bool]
             List of labels for the sampled sequences
     """
-    pass
+    # we can use the positive classes as they are (all of them) and just sample the same number of negative classes from the large pool.
+    all_pos_seqs=[]
+    all_pos_labels=[]
+    all_neg_seqs=[]
+
+    # isolate positive and negativeclasses
+    for seq, label in zip(seqs, labels):
+        if (label==True):
+            all_pos_seqs.append(seq)
+            all_pos_labels.append(label)
+        else:
+            all_neg_seqs.append(seq)
+
+
+    # randomly sample negative classes in the same amount as there are positive classes
+    neg_seqs_sample=random.sample(all_neg_seqs, len(all_pos_seqs)) 
+
+    sampled_seqs=all_pos_seqs+neg_seqs_sample
+    sampled_labels=all_pos_labels+[False]*len(neg_seqs_sample)
+
+    return sampled_seqs, sampled_labels
+    # pass
 
 def one_hot_encode_seqs(seq_arr: List[str]) -> ArrayLike:
     """
