@@ -109,7 +109,7 @@ class NeuralNetwork:
                 Current layer linear transformed matrix.
         """
         # each row in the W_curr matrix represents the neuron in the next layer, the number columns indicate the weights of each neuron in the previous activation layer (A_prev); the biases (b_curr) are added
-        # the output Z_curr is of dimensions output_dim x batches
+        # the output Z_curr is of dimensions batch_size x output_dim
         Z_curr=np.dot(A_prev, W_curr.T)+b_curr.T
 
         # pass through activation function
@@ -141,8 +141,6 @@ class NeuralNetwork:
         # set A_curr as the input batches which has the batches along the rows and features along the columns; this matches it to the W matrix, which contains the weights for the current layer in each row
         A_curr=X
 
-        # cache['A0']=A_curr # add as initial layer
-
         # go through each layer and call _single_forward
         for idx, layer in enumerate(self.arch):
             A_prev=A_curr
@@ -150,11 +148,10 @@ class NeuralNetwork:
             A_curr, Z_curr=self._single_forward(self._param_dict['W' + str(layer_idx)], self._param_dict['b' + str(layer_idx)], A_prev, layer['activation'])
 
             # add the A_curr and Z_curr to cache (on the last run, we get the final output layer)
-            # cache['A' + str(layer_idx)]=A_curr # has dimensions output_dim x batch_size
-            cache['A' + str(idx)]=A_prev # has dimensions output_dim x batch_size
-            cache['Z' + str(layer_idx)]=Z_curr # has dimensions output_dim x batch_size
+            cache['A' + str(idx)]=A_prev # has dimensions batch_size x output_dim
+            cache['Z' + str(layer_idx)]=Z_curr # has dimensions batch_size x output_dim
 
-        return A_curr, cache # JUST CHANGED FROM A_curr.T
+        return A_curr, cache 
         # pass
 
     def _single_backprop(
@@ -194,7 +191,7 @@ class NeuralNetwork:
 
         # https://towardsdatascience.com/coding-neural-network-forward-propagation-and-backpropagtion-ccf8cf369f76
         # dA_curr is the dC/dA_last, which is multiplied in the backpropagation step with dA/dZ, the output of this multiplication is dZ_curr, which represents dC/dZ -> we compute this first
-        # dA_curr has dimensions output_dim x batch_size, as does Z_curr and dZ_curr
+        # dA_curr has dimensions batch_size x output_dim, as does Z_curr and dZ_curr
         if (activation_curr=='sigmoid'):
             dZ_curr=self._sigmoid_backprop(dA_curr, Z_curr)
         elif (activation_curr=='relu'):
@@ -324,7 +321,6 @@ class NeuralNetwork:
 
                 # first train via forward alg. and get training loss
                 y_hat_train, cache_train=self.forward(X_train_batch)
-                print("y_hat_train", y_hat_train.shape)
 
             
                 # reshape y_train_batch 
@@ -333,11 +329,8 @@ class NeuralNetwork:
                     y_hat_train_for_loss=y_hat_train
                 except:
                     y_train_batch=y_train_batch.reshape(len(y_train_batch), 1)
-                    # y_hat_train_for_loss=np.mean(y_hat_train, axis=1)
                     y_hat_train_for_loss=self.predict(X_train_batch)
 
-                print("y_hat_train_for_loss", y_hat_train_for_loss.shape)
-                print("y_train_batch", y_train_batch.shape)
 
                 if (self._loss_func=="bce"): 
                     loss_train=self._binary_cross_entropy(y_train_batch, y_hat_train_for_loss)
@@ -352,14 +345,10 @@ class NeuralNetwork:
 
             # weighted average of the training losses where the weights are the length of each batch. If the batches are balanced in size, then the weighting does nothing and it is simply equal to the unweighted average
             loss_train=(np.sum(np.array(loss_train_list)*np.array([len(b) for b in X_train_batches])))/X_train.shape[0]
-            # loss_train=np.mean(loss_train_list)
             per_epoch_loss_train.append(loss_train) # store training loss
 
             # run validation on val data and store validation loss
-            # y_hat_val=self.predict(X_val)
             y_hat_val, cache_val=self.forward(X_val)
-            print("y_hat_val", y_hat_val.shape)
-            print("y_val", y_val.shape)
 
             # check if y_val is 2d, if so, don't change it (for autoencoder), if it is 1d, reshape and use predict to product 1d y_hat_val
             try: 
@@ -369,7 +358,7 @@ class NeuralNetwork:
                 y_hat_val=self.predict(X_val)
                 y_hat_val=y_hat_val.reshape(len(y_hat_val), 1)
 
-
+            # get validation loss
             if (self._loss_func=="bce"): 
                 loss_val=self._binary_cross_entropy(y_val, y_hat_val)
             elif (self._loss_func=="mse"): 
@@ -433,7 +422,7 @@ class NeuralNetwork:
         dZ=self._sigmoid(Z)*(1-self._sigmoid(Z))
 
         # multiple dZ with dA to get our dC/dZ - derivative of the cost function with respect to Z
-        dZ=dA*dZ # changed to dA.T to fix broadcasting error
+        dZ=dA*dZ 
 
         return dZ
         # pass

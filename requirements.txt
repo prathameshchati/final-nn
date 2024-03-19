@@ -2,3 +2,4 @@ pytest
 numpy
 typing
 scikit-learn
+tensorflow
